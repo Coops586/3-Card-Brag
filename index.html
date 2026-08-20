@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07130d">
+<title>Bastard Brag</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+:root{
+  --bg:#07130d;--felt:#0b5d38;--felt2:#084c2e;--panel:#0d2017;--panel2:#132a1e;
+  --text:#f7fbf8;--muted:#a5b9ad;--line:#294435;--gold:#e4c66b;--accent:#32d07b;
+}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% 20%,var(--felt),var(--bg) 62%);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{width:min(820px,100%);margin:auto;padding:18px}
+.logo{text-align:center;margin:8px 0 16px}.logo h1{margin:0;font-size:31px;letter-spacing:.5px}.logo p{margin:5px 0;color:var(--muted)}
+.panel{background:rgba(9,25,17,.92);border:1px solid var(--line);border-radius:20px;padding:16px;margin:12px 0;backdrop-filter:blur(8px)}
+.table{background:linear-gradient(180deg,var(--felt),var(--felt2));border:5px solid #3b2b18;border-radius:32px;padding:18px;box-shadow:inset 0 0 0 2px #7a5a31;margin:12px 0}
+input,select,button{width:100%;font:inherit;border-radius:13px;border:1px solid var(--line);padding:13px;background:#0b1a12;color:var(--text)}
+button{font-weight:800;cursor:pointer}.primary{background:var(--accent);color:#03140a;border:none}.gold{background:var(--gold);color:#171000;border:none}.danger{background:#9d252c;border:none}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.hidden{display:none!important}.muted{color:var(--muted)}.center{text-align:center}
+.roomcode{font-size:42px;font-weight:900;letter-spacing:7px;color:var(--gold)}
+.scores{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.score{padding:10px;border-radius:14px;background:var(--panel2)}.score.me{outline:2px solid var(--accent)}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.card{aspect-ratio:5/7;border-radius:14px;background:#fffdf6;color:#151515;border:4px solid transparent;display:flex;flex-direction:column;justify-content:space-between;padding:10px;font-weight:900;font-size:24px;box-shadow:0 7px 16px rgba(0,0,0,.25)}
+.card.red{color:#c5232f}.card.sel{border-color:var(--gold);transform:translateY(-5px)}
+.card .pip{font-size:34px;text-align:center}.tag{display:inline-block;padding:4px 8px;border-radius:999px;background:#183f2c;color:#baf4d3;font-size:12px}
+.turn{font-size:20px;font-weight:800}.knockfx{animation:knock .55s ease 2}@keyframes knock{50%{transform:scale(1.035);box-shadow:0 0 0 5px var(--gold)}}
+.toast{position:sticky;bottom:12px;background:#132a1e;border:1px solid var(--line);border-radius:14px;padding:11px;text-align:center}
+.avatar-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:8px}.avatar{padding:9px;font-size:22px}.avatar.active{outline:2px solid var(--gold)}
+.result-hand{padding:8px 0;border-bottom:1px solid var(--line)}
+@media(min-width:640px){.scores{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+<main>
+  <div class="logo">
+    <h1>BASTARD BRAG</h1>
+    <p>Private online 3-card brag</p>
+  </div>
+
+  <section id="home" class="panel">
+    <label>Player name</label>
+    <input id="name" maxlength="20" placeholder="Your name">
+
+    <div style="margin-top:12px">
+      <label>Avatar</label>
+      <div id="avatars" class="avatar-grid"></div>
+    </div>
+
+    <div style="margin-top:12px">
+      <label>Starting lives</label>
+      <select id="lives"><option value="3">3 lives</option><option value="5">5 lives</option></select>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button id="create" class="primary">CREATE GAME</button>
+      <button id="showJoin">JOIN GAME</button>
+    </div>
+
+    <div id="joinBox" class="hidden" style="margin-top:12px">
+      <input id="joinCode" maxlength="5" placeholder="ENTER ROOM CODE" style="text-transform:uppercase;text-align:center;letter-spacing:4px">
+      <button id="join" class="gold" style="margin-top:8px">JOIN ROOM</button>
+    </div>
+  </section>
+
+  <section id="lobby" class="hidden">
+    <div class="panel center">
+      <div class="muted">PRIVATE ROOM</div>
+      <div id="roomCode" class="roomcode"></div>
+      <div class="muted">Share this code with your mates.</div>
+    </div>
+    <div class="panel">
+      <div id="lobbyPlayers"></div>
+      <button id="start" class="primary hidden" style="margin-top:12px">DEAL CARDS</button>
+    </div>
+  </section>
+
+  <section id="game" class="hidden">
+    <div id="scores" class="scores"></div>
+
+    <div id="table" class="table">
+      <div class="center">
+        <div id="turnLine" class="turn"></div>
+        <div id="statusLine" class="muted"></div>
+      </div>
+
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+          <b>MIDDLE HAND</b><span class="tag">SHARED</span>
+        </div>
+        <div id="midCards" class="cards"></div>
+      </div>
+
+      <div id="myTurn" class="hidden">
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;gap:10px">
+            <b>YOUR HAND</b><span id="handLabel" class="tag"></span>
+          </div>
+          <div id="myCards" class="cards"></div>
+        </div>
+        <div class="panel">
+          <div class="muted">Swap 1 card or all 3. One swap per turn.</div>
+          <div class="row" style="margin-top:10px">
+            <button id="swap">SWAP</button>
+            <button id="knock" class="gold">KNOCK!</button>
+          </div>
+          <button id="finish" class="primary" style="margin-top:10px">END TURN</button>
+        </div>
+      </div>
+
+      <div id="waiting" class="panel center">
+        <b>Waiting for your turn</b>
+        <div id="waitingText" class="muted"></div>
+      </div>
+    </div>
+
+    <div id="roundEnd" class="panel hidden">
+      <h3 style="margin-top:0">Round result</h3>
+      <div id="resultText"></div>
+      <div id="revealHands"></div>
+      <button id="nextRound" class="primary hidden" style="margin-top:12px">NEXT ROUND</button>
+      <button id="rematch" class="gold hidden" style="margin-top:12px">REMATCH</button>
+    </div>
+  </section>
+
+  <div id="toast" class="toast hidden"></div>
+</main>
+
+<script>
+const socket=io();
+let state=null,yourIndex=null,hand=[],handLabel='',mineSel=new Set(),midSel=new Set(),avatar='🂠';
+const $=id=>document.getElementById(id);
+const avatarChoices=['🂠','😎','👑','🦁','🎯'];
+
+function toast(t){$('toast').textContent=t;$('toast').classList.remove('hidden');setTimeout(()=>$('toast').classList.add('hidden'),2200)}
+function suit(s){return {S:'♠',H:'♥',D:'♦',C:'♣'}[s]}
+function rank(r){return {11:'J',12:'Q',13:'K',14:'A'}[r]||r}
+
+function setupAvatars(){
+  $('avatars').innerHTML='';
+  avatarChoices.forEach((a,i)=>{
+    const b=document.createElement('button');b.type='button';b.className='avatar'+(i===0?' active':'');b.textContent=a;
+    b.onclick=()=>{avatar=a;document.querySelectorAll('.avatar').forEach(x=>x.classList.remove('active'));b.classList.add('active')};
+    $('avatars').append(b);
+  });
+}
+function cardEl(c,i,zone){
+  const b=document.createElement('button');
+  b.type='button';b.className='card '+((c.s==='H'||c.s==='D')?'red':'');
+  const set=zone==='mine'?mineSel:midSel;
+  if(set.has(i))b.classList.add('sel');
+  b.innerHTML=`<div>${rank(c.r)} ${suit(c.s)}</div><div class="pip">${suit(c.s)}</div><div style="text-align:right">${rank(c.r)} ${suit(c.s)}</div>`;
+  b.onclick=()=>{set.has(i)?set.delete(i):set.add(i);renderCards()};
+  return b;
+}
+function renderCards(){
+  $('myCards').innerHTML='';hand.forEach((c,i)=>$('myCards').append(cardEl(c,i,'mine')));
+  $('midCards').innerHTML='';(state?.middle||[]).forEach((c,i)=>$('midCards').append(cardEl(c,i,'mid')));
+  $('handLabel').textContent=handLabel||'';
+  $('swap').disabled=!(mineSel.size===midSel.size&&(mineSel.size===1||mineSel.size===3));
+}
+function render(){
+  if(!state)return;
+  $('home').classList.add('hidden');
+  $('lobby').classList.toggle('hidden',state.status!=='lobby');
+  $('game').classList.toggle('hidden',state.status==='lobby');
+  $('roomCode').textContent=state.code;
+  $('lobbyPlayers').innerHTML=state.players.map(p=>`<div style="padding:8px 0">${p.avatar} <b>${p.name}</b> ${p.index===yourIndex?'<span class="tag">YOU</span>':''}</div>`).join('');
+  $('start').classList.toggle('hidden',socket.id!==state.hostId);
+
+  if(state.status!=='lobby'){
+    $('scores').innerHTML=state.players.map(p=>`<div class="score ${p.index===yourIndex?'me':''}"><b>${p.avatar} ${p.name}</b><div>${p.lives>0?'♥'.repeat(p.lives):'OUT'}</div><small>Wins ${p.wins}</small></div>`).join('');
+    const cur=state.players[state.current];
+    $('turnLine').textContent=`Round ${state.round} — ${cur?.name||''}'s turn`;
+    $('statusLine').textContent=state.knockedBy===null?'Nobody has knocked yet.':`${state.players[state.knockedBy].name} KNOCKED — final turns`;
+    const turn=state.current===yourIndex&&state.status==='playing';
+    $('myTurn').classList.toggle('hidden',!turn);
+    $('waiting').classList.toggle('hidden',turn||state.status!=='playing');
+    $('waitingText').textContent=cur?`${cur.name} is choosing cards.`:'';
+    $('knock').disabled=state.knockedBy!==null;
+    $('roundEnd').classList.toggle('hidden',!(state.status==='roundEnd'||state.status==='finished'));
+    $('nextRound').classList.toggle('hidden',socket.id!==state.hostId||state.status!=='roundEnd');
+    $('rematch').classList.toggle('hidden',socket.id!==state.hostId||state.status!=='finished');
+    renderCards();
+  }
+}
+$('showJoin').onclick=()=>$('joinBox').classList.toggle('hidden');
+$('create').onclick=()=>socket.emit('createRoom',{name:$('name').value.trim()||'Player 1',lives:+$('lives').value,avatar});
+$('join').onclick=()=>socket.emit('joinRoom',{code:$('joinCode').value,name:$('name').value.trim()||'Player',avatar});
+$('start').onclick=()=>socket.emit('startGame');
+$('swap').onclick=()=>{socket.emit('swap',{mine:[...mineSel],middle:[...midSel]});mineSel.clear();midSel.clear()};
+$('knock').onclick=()=>socket.emit('knock');
+$('finish').onclick=()=>{mineSel.clear();midSel.clear();socket.emit('finishTurn')};
+$('nextRound').onclick=()=>socket.emit('nextRound');
+$('rematch').onclick=()=>socket.emit('rematch');
+
+socket.on('joined',d=>{yourIndex=d.yourIndex});
+socket.on('privateHand',d=>{hand=d.hand;handLabel=d.handLabel;yourIndex=d.yourIndex;renderCards()});
+socket.on('roomState',s=>{state=s;render()});
+socket.on('errorMsg',toast);
+socket.on('fx',x=>{
+  if(x.type==='knock'){$('table').classList.add('knockfx');setTimeout(()=>$('table').classList.remove('knockfx'),1200);toast(`${state.players[x.player].name} KNOCKED!`)}
+  if(x.type==='swap') toast(`${state.players[x.player].name} swapped cards`);
+});
+socket.on('roundResult',r=>{
+  const names=r.losers.map(i=>state.players[i].name);
+  $('resultText').innerHTML=`<b>${names.join(' & ')}</b> ${names.length>1?'lose':'loses'} a life.`;
+  $('revealHands').innerHTML=r.hands.map(x=>`<div class="result-hand"><b>${x.name}</b> — ${x.hand.map(c=>rank(c.r)+suit(c.s)).join(' ')} <span class="muted">(${x.label})</span></div>`).join('');
+});
+setupAvatars();
+</script>
+</body>
+</html>
